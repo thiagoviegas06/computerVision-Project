@@ -54,3 +54,27 @@ def newCountStars(binary_image):
     # Find contours in the binary image
     contours, _ = cv.findContours(binary_image, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     return len(contours)
+
+def calculate_histogram(image):
+    rgb_hist = []
+    colors = ('r','g','b')
+    for i, color in enumerate(colors):
+        rgb_hist.append(cv.calcHist([image], [i], None, [256], [0, 256]))
+
+    return rgb_hist
+
+def generatePlot(rows, columns, images):
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(rows, columns, figsize=(18, 6))
+    axes = axes.flatten()
+
+    for img, ax in zip(images, axes):
+        if len(img.shape) == 2:  # Grayscale image
+            ax.imshow(img, cmap='gray')
+        else:  # Color image
+            ax.imshow(cv.cvtColor(img, cv.COLOR_BGR2RGB))
+        ax.axis('off')
+
+    plt.tight_layout()
+    plt.show()
