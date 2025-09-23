@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import helpers as h
 import glob
 import os
+import patternsHelper as ph
 LOWES_RATIO = 0.75
 
 
@@ -19,12 +20,8 @@ def main():
     #convert image to grayscale
     mensa_gray = cv.cvtColor(mensa, cv.COLOR_BGR2GRAY)
 
-    #adaptive thresholding
-    mensa_adaptive_thresh = cv.adaptiveThreshold(mensa_gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
-
     # I found that global thresholding worked better for this image
     mensa_tresh = cv.threshold(mensa_gray, 180, 255, cv.THRESH_BINARY)[1]
-
     updated_mensa = mensa.copy()
 
     coordinates_list = []
@@ -41,25 +38,22 @@ def main():
         # Convert patch to grayscale
         patch_gray = cv.cvtColor(patch, cv.COLOR_BGR2GRAY)
         # Apply adaptive thresholding to the patch
-        patch_adaptive_thresh = cv.adaptiveThreshold(patch_gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
-        patch_trhesh = cv.threshold(patch_gray, 180, 255, cv.THRESH_BINARY)[1]
+        #patch_adaptive_thresh = cv.adaptiveThreshold(patch_gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
+        patch_thresh = cv.threshold(patch_gray, 180, 255, cv.THRESH_BINARY)[1]
 
         # Template matching
-        score, coordinates = h.template_matching(mensa_tresh, patch_trhesh)
+        score, coordinates = h.template_matching(mensa_tresh, patch_thresh)
         print(f"Matching score for {filename}: {score}")
         print(f"Coordinates (x, y, width, height) for {filename}: {coordinates}")
 
         if score > 0.75:
-            cv.circle(updated_mensa, coordinates[0], coordinates[1], (255, 0, 0), -1)
+            #cv.circle(updated_mensa, coordinates[0], coordinates[1], (255, 0, 0), -1)
             coordinates_list.append(coordinates[0])
 
 
     coordinates = np.array(coordinates_list, dtype=np.int32)
 
     print(coordinates)
-
-    #convert to hsv
-    mensa_hsv = cv.cvtColor(mensa, cv.COLOR_BGR2HSV)
 
     bound = np.array([255,0,0])
 
@@ -71,103 +65,60 @@ def main():
     updated_image_gray = cv.cvtColor(updated_image, cv.COLOR_BGR2GRAY)
 
     #trace line between points
-    #image_with_lines = h.draw_lines_between_points(updated_mensa, coordinates, thickness=2)
+    line_mask = np.zeros_like(updated_image_gray, dtype=np.uint8)  # all zeros
+    line_mask = h.draw_lines_between_all_points(line_mask, coordinates, thickness=2)  
 
+    # Ensure it's binary (0/255) in case your helper draws anti-aliased lines
+    #_, line_mask = cv.threshold(line_mask, 127, 255, cv.THRESH_BINARY)
 
+    # Distance transform expects foreground=0 (features) and background=1
+    # Create a 0/1 mask where background=1, lines=0
+    bg_mask = (line_mask == 0).astype(np.uint8)   # 1 on background, 0 on lines
+    dt = cv.distanceTransform(bg_mask, cv.DIST_L2, 3).astype(np.float32)
 
-    # Example usage: Replace 'stars.jpg' with your image file and 10 with your desired number of stars.
-    brightest = h.display_n_brightest_stars(mensa, mensa_tresh, 400)
+    #Turn pattern to binary mask
+    pattern = cv.imread('patterns/mensa_pattern.png', cv.IMREAD_UNCHANGED)
+    tpl_f, bw_255 = h.turn_pattern_to_binary_mask(pattern)  # tpl_f is 0/1 float32
 
+    fg = float(tpl_f.sum()) + 1e-6          # number of foreground pixels
+    res = cv.matchTemplate(-dt, tpl_f, cv.TM_CCORR)  # maximize correlation == minimize sum(DT under ones)
+    _, maxVal, _, maxLoc = cv.minMaxLoc(res)
 
+    sum_dist  = -maxVal
+    mean_dist = sum_dist / fg
+    score     = 1.0 / (1.0 + mean_dist)
 
+    print(f"mean_dist: {mean_dist:.3f}  score: {score:.3f}  loc: {maxLoc}")
 
+    #template match original image
+    score = cv.matchTemplate(line_mask, bw_255, cv.TM_CCORR_NORMED)
+    _, best, _, loc = cv.minMaxLoc(score)        # higher is better (0..1]
+    print("NCC score:", best, "at", loc)
 
-    #Try to template match pattern on line image
+    pat, node_mask, line_mask = ph.extract_pattern_from_image(pattern, name="Mensa")
 
-    pattern = cv.imread('patterns/mensa_pattern.png', cv.IMREAD_GRAYSCALE)
+    print("Nodes:", len(pat.nodes))
+    for lbl, node in pat.nodes.items():
+        print(lbl, node.position, "deg:", len(node.links))
 
-    # Tune 't' (try 180–220 depending on your image)
-    t = 180
-    _, bw = cv.threshold(pattern, t, 255, cv.THRESH_BINARY)
+    print("Edges:", pat.edges)  # list of (a,b)
 
-    # 2) Optional denoise small specks
-    # bw = cv.medianBlur(bw, 3)
-
-    # 3) Connected components + shape filtering (keep round blobs)
-    num, labels, stats, centroids = cv.connectedComponentsWithStats(bw)
-
-    T = centroids[1:].astype(np.float32)
-
-    print("Template points:", T.shape)
-    print(T)
-
-
-    inverted = cv.bitwise_not(updated_image_gray)
-
-    wrong_pattern = cv.imread('patterns/indus_pattern.png', cv.IMREAD_GRAYSCALE)
     # Plotting results
     h.image_axis_plotting([
         (mensa, "Original Mensa Image"),
-        (mensa_tresh, "Global Thresholding on Mensa Image"),
-        (mensa_adaptive_thresh, "Adaptive Thresholding on Mensa Image"),
-        (updated_mensa, "Detected Patches on Mensa Image"),
-        (inverted, "Inverted Gray Scale Tresholded Image"),
-        (pattern, "Correct Pattern Image"),
-        (bw, "Binarized Correct Pattern"),
-        (wrong_pattern, "Wrong Pattern Image")
+        #(updated_mensa, "Detected Patches on Mensa Image"),
+        (bw_255, "Patch Template Mask"),
+        (dt, "Distance Transform of Edges"),
+        (line_mask, "Line Mask"),
     ])
-
+    '''
     h.image_axis_plotting([
         (mensa, "Original Mensa Image"),
-        (updated_mensa, "Detected Patches on Mensa Image"),
+        #(updated_mensa, "Detected Patches on Mensa Image"),
         (mensa_tresh, "Global Thresholding on Mensa Image"),
     ])
+    '''
 
-    #template matching 
-    score, coordinates = h.template_matching(inverted, bw)
-    print(f"Final Matching score for pattern: {score}")
-    print(f"Final Coordinates (x, y, width, height) for pattern: {coordinates}")
-
-    wrong_score, wrong_coordinates = h.template_matching(inverted, wrong_pattern)
-
-
-    score, coordinates = h.template_matching(brightest, bw)
-    print(f"Final Matching score for pattern: {score}")
-    print(f"Final Coordinates (x, y, width, height) for pattern: {coordinates}")
-
-    # orb = cv.ORB_create(nfeatures=2000)
-    # bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=False)
-
-    # sky_kp, sky_des = orb.detectAndCompute(mensa_adaptive_thresh, None)
-    # patch_kp, patch_des = orb.detectAndCompute(pattern, None)
-    # matches = bf.knnMatch(patch_des, sky_des, k=2)
-
-
-    # patch_results = []
-    # accepted_points = []
-
-    # good_match = None
-    # for m, n in matches:
-    #     # Apply Lowe's Ratio Test
-    #     if m.distance < LOWES_RATIO * n.distance:
-    #         good_match = m
-    #         break # Found a confident match for this patch
-
-    # if good_match:
-    #     # ACCEPT: A confident match was found
-    #     matched_kp = sky_kp[good_match.trainIdx]
-    #     center_x, center_y = int(matched_kp.pt[0]), int(matched_kp.pt[1])
-    #     patch_results.append(f"({center_x},{center_y})")
-    #     accepted_points.append([center_x, center_y])
-    # else:
-    #     # REJECT: No confident match found
-    #     patch_results.append("-1")
-
-    # print(f"  - Found {len(accepted_points)} valid patches via feature matching.")
-
-    # # C. Constellation Classification
-    # accepted_points_np = np.array(accepted_points)
-    # print(accepted_points_np)
 
 if __name__ == "__main__":
     main()
