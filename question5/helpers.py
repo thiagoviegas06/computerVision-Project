@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 def equalize_image(image):
     # First, converting image to yCbCr
-    image_yCbCr = cv.cvtColor(image, cv.COLOR_RGB2YCrCb)
+    image_yCbCr = cv.cvtColor(image, cv.COLOR_BGR2YCrCb)
 
     # Apply Histogram Equalization
     image_yCbCr[:,:,0] = cv.equalizeHist(image_yCbCr[:,:,0])
@@ -211,6 +211,44 @@ def align_points(T, P, eps_px=6.0, allow_scale=True):
     return s, b, matches, acc
 
 
+# Display only n brightest stars in mensa_gray
+def display_n_brightest_stars(original_image, processed_gray_image, n):
+    """
+    Finds and displays the n brightest stars from an image.
+    """
 
+    # Find contours in the thresholded image
+    contours, _ = cv.findContours(processed_gray_image, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    # Check if any contours were found
+    if not contours:
+        print("No bright spots (contours) found in the image.")
+        return
+
+    # 5. Sort contours by area in descending order
+    contours = sorted(contours, key=cv.contourArea, reverse=True)
+
+    # 6. Create a new, black image to draw the selected stars
+    mask = np.zeros_like(original_image)
+
+    # 7. Draw the top 'n' contours as white on the black mask
+    for i in range(min(n, len(contours))):
+        cv.drawContours(mask, [contours[i]], -1, (255, 255, 255), -1)
+
+    # 8. Use a bitwise AND operation to display only the top n stars from the original image
+    brightest_stars_only = cv.bitwise_and(original_image, mask)
+
+    # Display the results
+    cv.namedWindow("Original Image", cv.WINDOW_NORMAL)
+    cv.resizeWindow("Original Image", 1600, 1200)
+    im = cv.imshow("Original Image", original_image)
+
+    cv.namedWindow(f"Top {n} Brightest Stars", cv.WINDOW_NORMAL)
+    cv.resizeWindow(f"Top {n} Brightest Stars", 1600, 1200)
+    ims =cv.imshow(f"Top {n} Brightest Stars", brightest_stars_only)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+    return cv.cvtColor(brightest_stars_only, cv.COLOR_BGR2GRAY)
 
 
