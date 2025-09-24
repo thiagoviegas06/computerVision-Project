@@ -696,6 +696,22 @@ def validate_and_score_match(detected_coords, match_result, distance_tolerance=2
     projected_nodes = (R @ all_pattern_nodes_pos.T).T + t
     match_result['transform'] = {'R': R, 't': t}
 
+    MIN_AREA_THRESHOLD = 150 * 150 
+    MAX_AREA_THRESHOLD = 5000 * 5000
+    
+    # Calculate the bounding box of the projected points
+    min_coords = np.min(projected_nodes, axis=0)
+    max_coords = np.max(projected_nodes, axis=0)
+    
+    width = max_coords[0] - min_coords[0]
+    height = max_coords[1] - min_coords[1]
+    area = width * height
+    
+    # If the area is too small, reject this match immediately by returning a zero score.
+    if area < MIN_AREA_THRESHOLD or area > MAX_AREA_THRESHOLD:
+        match_result['final_score'] = 0.0
+        return match_result
+
     # --- 4. MODIFIED: Calculate Structural Fit Score with Harsher Penalty ---
     distances, _ = scene_kdtree.query(projected_nodes)
     num_matched_nodes = np.sum(distances < distance_tolerance)
