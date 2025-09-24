@@ -92,6 +92,12 @@ class Image:
         return self.detected_stars
 
     def create_black_image_with_coordinates(self):
-        black_image = np.zeros_like(self.image)
-        updated_image = h.draw_lines_between_all_points(black_image, self.coordinates_list, color=(255, 255, 255))
+        # Make a 2D black canvas, uint8, single channel
+        H, W = self.image.shape[:2]
+        black_image = np.zeros((H, W), dtype=np.uint8)
+
+        # Now draw lines in white (255)
+        updated_image = h.draw_lines_between_all_points(
+            black_image, self.coordinates_list, color=255  # just an int, not a tuple
+        )
         return updated_image
