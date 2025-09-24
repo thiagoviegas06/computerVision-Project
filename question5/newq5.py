@@ -124,19 +124,8 @@ def main(sky_file, pattern_dir, patch_dir):
     # We use sky.image, which is the original BGR image loaded at the start
     h.plot_match_in_scene(sky.image, coordinates, best_match)
     
-    # pattern = cv.imread('patterns/mensa_pattern.png', cv.IMREAD_UNCHANGED)
-    # pat, node_mask, line_mask = ph.extract_pattern_from_image(pattern, name="Mensa")
 
-    # print("Nodes:", len(pat.nodes))
-    # for lbl, node in pat.nodes.items():
-    #     print(lbl, node.position, "deg:", len(node.links))
-
-    # print("Edges:", pat.edges)  # list of (a,b)
-
-    # highest_deg_node = pat.getHighestDegreeNode()
-
-    # print("Anchor node:", highest_deg_node.label, highest_deg_node.position, "deg:", len(highest_deg_node.links))
-
+    
    
 
 
