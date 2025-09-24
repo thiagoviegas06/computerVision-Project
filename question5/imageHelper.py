@@ -6,6 +6,7 @@ import os
 import glob
 from patternsHelper import Node, Pattern, extract_pattern_from_image
 import math
+import helpers as h
 
 class Image:
     def __init__(self, image_path, path_to_patches=None):
@@ -57,7 +58,7 @@ class Image:
             print(f"Matching score for {filename}: {score}")
             print(f"Coordinates (x, y, width, height) for {filename}: {coordinates}")
 
-            if score > 0.75:
+            if score > 0.95:
                self.coordinates_list.append(coordinates[0])
     
     def get_coordinates(self):
@@ -89,3 +90,8 @@ class Image:
         
         self.detected_stars = detected_stars
         return self.detected_stars
+
+    def create_black_image_with_coordinates(self):
+        black_image = np.zeros_like(self.image)
+        updated_image = h.draw_lines_between_all_points(black_image, self.coordinates_list, color=(255, 255, 255))
+        return updated_image
