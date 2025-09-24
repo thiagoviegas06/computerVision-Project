@@ -10,14 +10,13 @@ from imageHelper import Image as imageHelper
 def main(sky_file, pattern_dir, patch_dir):
 
     # Load sky image
-    mensa = imageHelper(sky_file, path_to_patches=patch_dir)
-    stars_with_sizes = mensa.detect_stars_from_sky(thresh_value=180)
+    sky = imageHelper(sky_file, path_to_patches=patch_dir)
 
-    mensa.iterate_through_patches()
+    sky.iterate_through_patches()
+    coordinates = sky.get_coordinates()
+    coords_black = sky.create_black_image_with_coordinates()
 
-    coordinates = mensa.get_coordinates()
-
-    sky_gray = cv.cvtColor(mensa.image, cv.COLOR_BGR2GRAY)
+    sky_gray = cv.cvtColor(sky.image, cv.COLOR_BGR2GRAY)
     print(f"\nDetected {len(coordinates)} star coordinates from patches.")
     if len(coordinates) < 2:
         print("Not enough stars detected to perform matching. Exiting.")
@@ -57,15 +56,13 @@ def main(sky_file, pattern_dir, patch_dir):
             print(f"  - No initial candidates found for '{pat.name}'.")
             continue
             
-        # 2. Prune by keeping only the top N unique candidates based on score
-        # This prevents us from validating hundreds of similar, poor-quality matches
+        # Greedy approach does not work well here, so we will sort in order of normalized_score just as an initial guess and validate all
         all_initial_candidates.sort(key=lambda x: x['normalized_score'], reverse=True)
-        top_candidates_to_validate = all_initial_candidates[:5] # Validate the top 5 hypotheses
 
         # 3. Validate each of these top candidates
         best_validated_match_for_pattern = None
-        for candidate in top_candidates_to_validate:
-            validated_match = h.validate_and_score_match(coordinates, candidate, distance_tolerance=25.0)
+        for candidate in all_initial_candidates:
+            validated_match = h.validate_and_score_match(coordinates, candidate, distance_tolerance=20.0)
             
             if best_validated_match_for_pattern is None or validated_match['final_score'] > best_validated_match_for_pattern['final_score']:
                 best_validated_match_for_pattern = validated_match
@@ -81,17 +78,25 @@ def main(sky_file, pattern_dir, patch_dir):
     print("\n[Stage 3] Refining scores with pixel-level mask fitting...")
     final_results = []
     for match in all_validated_matches:
-        mask_score = h.calculate_mask_fit_score(sky_gray, match['node_mask'], match['line_mask'], match)
+        score = cv.matchTemplate(coords_black, match['line_mask'], cv.TM_CCOEFF_NORMED)
+        _, mask_score, _, loc = cv.minMaxLoc(score)   
+
+        # mask_score = h.calculate_mask_fit_score(sky_gray, match['node_mask'], match['line_mask'], match)
         match['mask_fit_score'] = mask_score
+
+        sparsity_score = h.calculate_sparsity_score(coordinates, match)
+        match['sparsity_score'] = sparsity_score
         
         geometric_score = match.get('final_score', 0.0)
-        match['overall_score'] = (0.7 * geometric_score) + (0.3 * mask_score)
+        match['overall_score'] = (1 * geometric_score) + (0 * mask_score)
         final_results.append(match)
 
-        print(f"  - Constellation: {match['name']:<15} | Geo Score: {geometric_score:.2f} | Mask Score: {mask_score:.2f} | Overall: {match['overall_score']:.2f}")
+        print(f"  - Constellation: {match['name']:<15} | Geo Score: {geometric_score:.2f} | Mask Score: {mask_score:.2f} | Sparsity Score: {sparsity_score:.2f} | Overall: {match['overall_score']:.2f}")
 
     # --- Determine the Best Match based on the OVERALL Score ---
-    best_match = max(final_results, key=lambda r: r.get('overall_score', 0.0))
+    # Add mask_fit_score as tie breaker if multiple have same overall_score
+    
+    best_match = max(final_results, key=lambda r: (r.get('overall_score', 0.0), r.get('sparsity_score', 0.0)))
     
     print("\n" + "="*25)
     print("      FINAL RESULT")
@@ -117,7 +122,7 @@ def main(sky_file, pattern_dir, patch_dir):
         print("  - No valid transform was found to project coordinates.")
 
     # We use sky.image, which is the original BGR image loaded at the start
-    h.plot_match_in_scene(mensa.image, coordinates, best_match)
+    h.plot_match_in_scene(sky.image, coordinates, best_match)
     
     # pattern = cv.imread('patterns/mensa_pattern.png', cv.IMREAD_UNCHANGED)
     # pat, node_mask, line_mask = ph.extract_pattern_from_image(pattern, name="Mensa")

@@ -651,7 +651,7 @@ def validate_and_score_match(detected_coords, match_result, distance_tolerance=2
     match_result['transform'] = {'R': R, 't': t}
 
     MIN_AREA_THRESHOLD = 150 * 150 
-    MAX_AREA_THRESHOLD = 5000 * 5000
+    MAX_AREA_THRESHOLD = 5500 * 5500
     
     # Calculate the bounding box of the projected points
     min_coords = np.min(projected_nodes, axis=0)
@@ -661,7 +661,7 @@ def validate_and_score_match(detected_coords, match_result, distance_tolerance=2
     height = max_coords[1] - min_coords[1]
     area = width * height
     
-    # If the area is too small, reject this match immediately by returning a zero score.
+    # If the area is too small or too big, reject this match immediately by returning a zero score.
     if area < MIN_AREA_THRESHOLD or area > MAX_AREA_THRESHOLD:
         match_result['final_score'] = 0.0
         return match_result
@@ -672,9 +672,11 @@ def validate_and_score_match(detected_coords, match_result, distance_tolerance=2
     
     # Calculate the ratio of matched nodes
     match_ratio = num_matched_nodes / len(pattern.nodes)
-    
+    match_result['num_matched_nodes'] = num_matched_nodes
+
     # Apply a non-linear penalty. Squaring the ratio punishes misses more heavily.
     # You can increase the exponent (e.g., to 3) for an even harsher penalty.
+    match_ratio = num_matched_nodes / len(pattern.nodes)
     structural_fit_score = match_ratio ** 2
     
     # --- 5. Calculate Final Score ---
@@ -831,5 +833,45 @@ def plot_match_in_scene(sky_image, all_coords, best_match):
     plt.show()
 
 
+def calculate_sparsity_score(all_detected_coords, match_result, distance_tolerance=25.0):
+    """
+    Calculates a precision score based on how many of the stars within a match's
+    bounding box are successfully accounted for by the pattern. This version
+    ensures the score cannot exceed 1.0.
+    """
+    if 'transform' not in match_result or match_result['transform'] is None:
+        return 0.0
 
+    transform = match_result['transform']
+    R, t = transform['R'], transform['t']
+    pattern = match_result['pattern']
     
+    # 1. Define the local area by finding the pattern's bounding box on the image
+    all_pattern_nodes_pos = np.array([node.position for node in pattern.nodes.values()])
+    projected_nodes = (R @ all_pattern_nodes_pos.T).T + t
+    min_coords = np.min(projected_nodes, axis=0)
+    max_coords = np.max(projected_nodes, axis=0)
+
+    # 2. Find all detected stars that fall strictly within this bounding box
+    stars_in_bbox = [
+        coord for coord in all_detected_coords 
+        if (min_coords[0] <= coord[0] <= max_coords[0]) and \
+           (min_coords[1] <= coord[1] <= max_coords[1])
+    ]
+    
+    num_stars_in_bbox = len(stars_in_bbox)
+    if num_stars_in_bbox == 0:
+        return 0.0
+
+    # 3. Count how many pattern nodes match a star *from this local subset*
+    # This is the crucial step that guarantees consistency.
+    stars_in_bbox_array = np.array(stars_in_bbox)
+    kdtree_in_bbox = cKDTree(stars_in_bbox_array)
+    
+    distances, _ = kdtree_in_bbox.query(projected_nodes)
+    num_matched_stars_in_bbox = np.sum(distances < distance_tolerance)
+
+    # 4. The score is the ratio of matched stars to total stars *in the same defined area*.
+    score = num_matched_stars_in_bbox / num_stars_in_bbox
+    
+    return score
