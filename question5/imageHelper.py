@@ -62,3 +62,30 @@ class Image:
     
     def get_coordinates(self):
         return self.coordinates_list
+    
+    def detect_stars_from_sky(self, thresh_value=180, min_area=4, max_area=1000):
+        """
+        Detects all stars directly from the sky image using contour detection.
+        This is more robust than iterating through patches.
+        
+        Returns: A list of tuples, where each is ((x, y), size).
+        """
+        if self.global_thresh_image is None:
+            self.global_threshold(thresh_value)
+        
+        contours, _ = cv.findContours(self.global_thresh_image, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        
+        detected_stars = []
+        for cnt in contours:
+            area = cv.contourArea(cnt)
+            
+            if min_area <= area <= max_area:
+                # Calculate the centroid (center of mass) for a precise position
+                M = cv.moments(cnt)
+                if M['m00'] > 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+                    detected_stars.append( ((cx, cy), area) )
+        
+        self.detected_stars = detected_stars
+        return self.detected_stars

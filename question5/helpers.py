@@ -365,3 +365,497 @@ def compareAngles(angle1, angle2, tolerance_deg=12.0):
     tolerance_rad = math.radians(tolerance_deg)
     diff = abs(angle1 - angle2) % (2 * math.pi)
     return diff <= tolerance_rad or diff >= (2 * math.pi - tolerance_rad)
+
+
+def visualize_pattern(node_mask, line_mask, title="Pattern Visualization"):
+    plt.figure(figsize=(8, 8))
+    plt.imshow(node_mask, cmap='gray')
+    plt.imshow(line_mask, cmap='Greens', alpha=0.5)  # Overlay lines with some transparency
+    plt.title(title)
+    plt.axis('off')
+    plt.show()
+
+def calculate_all_angle_signatures(coordinates: list[tuple[float, float]]) -> list[list[float]]:
+    """
+    For each coordinate, calculates a sorted list of angles to all other coordinates.
+    This creates an "angle signature" for each point.
+
+    Args:
+        coordinates: A list of (x, y) coordinates from the sky image.
+
+    Returns:
+        A list of signatures, where each signature is a sorted list of angles in radians.
+    """
+    all_signatures = []
+    for i, p1 in enumerate(coordinates):
+        angles = []
+        for j, p2 in enumerate(coordinates):
+            if i == j:
+                continue
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            angle = math.atan2(dy, dx)
+            angles.append(angle)
+        angles.sort()
+        all_signatures.append(angles)
+    return all_signatures
+
+def _normalize_angle(angle):
+    """Helper to normalize an angle to the range [-pi, pi)."""
+    return (angle + math.pi) % (2 * math.pi) - math.pi
+
+def compare_signatures(pattern_sig: list[float], detected_sig: list[float], tolerance_rad: float) -> tuple[int, float | None]:
+    """
+    Compares signatures and returns the match count AND the best rotational offset.
+    """
+    if not pattern_sig or not detected_sig:
+        return 0, None
+
+    max_matches = 0
+    best_rotation_offset = None # Will store the best rotation found
+
+    for p_angle_anchor in pattern_sig:
+        for d_angle_anchor in detected_sig:
+            rotation_offset = _normalize_angle(d_angle_anchor - p_angle_anchor)
+            
+            current_matches = 0
+            temp_detected_sig = list(detected_sig)
+            
+            for p_angle in pattern_sig:
+                expected_d_angle = _normalize_angle(p_angle + rotation_offset)
+                
+                best_match_idx = -1
+                min_diff = float('inf')
+                
+                for i, d_angle_candidate in enumerate(temp_detected_sig):
+                    diff = abs(_normalize_angle(d_angle_candidate - expected_d_angle))
+                    if diff < min_diff:
+                        min_diff = diff
+                        best_match_idx = i
+                
+                if best_match_idx != -1 and min_diff <= tolerance_rad:
+                    current_matches += 1
+                    temp_detected_sig.pop(best_match_idx)
+
+            if current_matches > max_matches:
+                max_matches = current_matches
+                best_rotation_offset = rotation_offset # Save the best rotation
+                
+    return max_matches, best_rotation_offset
+
+def calculate_all_angle_signatures(coordinates: list[tuple[float, float]], k: int = 12) -> list[list[float]]:
+    """
+    For each coordinate, calculates a sorted list of angles to its 'k' nearest neighbors.
+    This creates a sparse, local "angle signature" for each point.
+
+    Args:
+        coordinates: A list of (x, y) coordinates from the sky image.
+        k (int): The number of nearest neighbors to use for the signature. A value
+                 around 10-15 is often robust.
+
+    Returns:
+        A list of signatures, where each signature is a sorted list of angles in radians.
+    """
+    if len(coordinates) <= k:
+        # If there are fewer points than k, fall back to the old method (all points)
+        # This is a fallback for very sparse images.
+        all_signatures = []
+        for i, p1 in enumerate(coordinates):
+            angles = []
+            for j, p2 in enumerate(coordinates):
+                if i == j: continue
+                dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+                angles.append(math.atan2(dy, dx))
+            angles.sort()
+            all_signatures.append(angles)
+        return all_signatures
+
+    # Use a k-d tree for super-fast nearest neighbor searches
+    coords_array = np.array(coordinates)
+    kdtree = cKDTree(coords_array)
+    
+    # Query the tree for the k+1 nearest neighbors for all points at once
+    # (k+1 because the point itself is its own nearest neighbor)
+    distances, indices = kdtree.query(coords_array, k=k + 1)
+
+    all_signatures = []
+    for i in range(len(coordinates)):
+        p1 = coords_array[i]
+        angles = []
+        # Iterate through the k nearest neighbors (skipping the first, which is the point itself)
+        for neighbor_idx in indices[i, 1:]:
+            p2 = coords_array[neighbor_idx]
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            angles.append(math.atan2(dy, dx))
+        
+        angles.sort()
+        all_signatures.append(angles)
+        
+    return all_signatures
+
+from collections import defaultdict
+
+def find_candidate_rotations(pattern_sig: list[float], detected_sig: list[float], tolerance_rad: float, num_candidates: int = 4):
+    """
+    Finds the top N rotational hypotheses by voting, then verifies each with a true match count.
+    """
+    if not pattern_sig or not detected_sig:
+        return []
+
+    # Stage 1: Fast voting to find promising rotation bins
+    rotation_votes = defaultdict(int)
+    rotation_offsets = defaultdict(list)
+    bin_size_rad = tolerance_rad 
+    
+    for p_angle_anchor in pattern_sig:
+        for d_angle_anchor in detected_sig:
+            rotation_offset = _normalize_angle(d_angle_anchor - p_angle_anchor)
+            rotation_bin = round(rotation_offset / bin_size_rad)
+            rotation_votes[rotation_bin] += 1
+            rotation_offsets[rotation_bin].append(rotation_offset)
+
+    if not rotation_votes:
+        return []
+
+    # Get the top N most-voted-for rotation bins
+    sorted_bins = sorted(rotation_votes.items(), key=lambda item: item[1], reverse=True)
+    
+    candidates = []
+    # Stage 2: For each top candidate, perform a precise 1-to-1 match to get an accurate score
+    for i in range(min(num_candidates, len(sorted_bins))):
+        best_bin, _ = sorted_bins[i]
+        # Use the average rotation in the bin for better accuracy
+        avg_rotation = np.mean(rotation_offsets[best_bin])
+
+        # Perform a true match count using this rotation
+        temp_detected_sig = list(detected_sig)
+        current_matches = 0
+        for p_angle in pattern_sig:
+            expected_d_angle = _normalize_angle(p_angle + avg_rotation)
+            
+            # Find the best corresponding angle in the detected signature
+            best_match_idx = -1
+            min_diff = float('inf')
+            
+            for k, d_angle_candidate in enumerate(temp_detected_sig):
+                diff = abs(_normalize_angle(d_angle_candidate - expected_d_angle))
+                if diff < min_diff:
+                    min_diff = diff
+                    best_match_idx = k
+            
+            # If a match is found within tolerance, count it and "consume" the detected angle
+            if best_match_idx != -1 and min_diff <= tolerance_rad:
+                current_matches += 1
+                temp_detected_sig.pop(best_match_idx)
+
+        # The score is now a true match count, which cannot exceed len(pattern_sig)
+        candidates.append({'rotation_rad': avg_rotation, 'score': current_matches})
+        
+    return candidates
+
+# You'll also need to update find_best_match_by_angles to use this new function.
+# This function is now a simple wrapper.
+
+def find_best_match_by_angles(pattern: Pattern, detected_coords: list, anchor_node: Node, angle_tolerance_deg: float = 10.0, k_neighbors: int = 12):
+    """
+    Finds multiple candidate matches for a given anchor node.
+    """
+    if not detected_coords or len(detected_coords) < 2 or not anchor_node or not anchor_node.links:
+        return []
+
+    pattern_sig = sorted([link[3] for link in anchor_node.links.values()])
+    tolerance_rad = math.radians(angle_tolerance_deg)
+
+    candidate_results = []
+    # Iterate through every star in the sky as a potential anchor point
+    for i, p_coord in enumerate(detected_coords):
+        detected_sig = calculate_all_angle_signatures([p_coord] + detected_coords[:i] + detected_coords[i+1:], k=k_neighbors)[0]
+        
+        # Get top rotation candidates for this sky point
+        rotations = find_candidate_rotations(pattern_sig, detected_sig, tolerance_rad)
+        
+        for rot_candidate in rotations:
+            candidate_results.append({
+                "name": pattern.name,
+                "score": rot_candidate['score'],
+                "normalized_score": rot_candidate['score'] / len(pattern_sig) if pattern_sig else 0.0,
+                "anchor_idx": i,
+                "rotation_rad": rot_candidate['rotation_rad'],
+                "pattern": pattern,
+                "pattern_anchor_node": anchor_node
+            })
+
+    # Return all found candidates, let the main loop sort them out
+    return candidate_results
+
+def display_match(sky_image, detected_coords, match_result):
+    """
+    Overlays the FULL matched constellation pattern onto the sky image using the
+    calculated geometric transformation.
+    """
+    vis_image = cv.cvtColor(sky_image, cv.COLOR_GRAY2BGR) if len(sky_image.shape) == 2 else sky_image.copy()
+
+    # Draw all detected stars for context
+    for x, y in detected_coords:
+        cv.circle(vis_image, (int(x), int(y)), 7, (255, 100, 100), 1)
+
+    # Check if a valid match and transform exist
+    if match_result.get('final_score', 0.0) < 0.1 or 'transform' not in match_result:
+        print("Match score too low or transform not found. Cannot display full overlay.")
+        # Highlight the anchor if it exists
+        if match_result.get('anchor_idx', -1) != -1:
+            anchor_pos = detected_coords[match_result['anchor_idx']]
+            cv.circle(vis_image, (int(anchor_pos[0]), int(anchor_pos[1])), 12, (0, 0, 255), 2)
+    else:
+        # --- A good match was found, so draw the full projection ---
+        transform = match_result['transform']
+        R, t = transform['R'], transform['t']
+        pattern = match_result['pattern']
+        
+        # Project all pattern nodes into the scene
+        all_pattern_nodes_pos = np.array([node.position for node in pattern.nodes.values()])
+        projected_nodes = (R @ all_pattern_nodes_pos.T).T + t
+        
+        # Create a map from node label to its index for drawing edges
+        label_to_idx = {label: i for i, label in enumerate(pattern.nodes.keys())}
+
+        # Draw projected edges
+        for start_label, end_label in pattern.edges:
+            p1 = tuple(projected_nodes[label_to_idx[start_label]].astype(int))
+            p2 = tuple(projected_nodes[label_to_idx[end_label]].astype(int))
+            cv.line(vis_image, p1, p2, (0, 255, 0), 2) # Green lines
+        
+        # Draw projected nodes, color-coded by whether they matched a real star
+        scene_kdtree = cKDTree(np.array(detected_coords))
+        distances, _ = scene_kdtree.query(projected_nodes)
+        
+        for i, pos in enumerate(projected_nodes):
+            # If the projected node is close to a real star, it's a confirmed match
+            if distances[i] < 25.0: # Use same tolerance as validation
+                 cv.circle(vis_image, tuple(pos.astype(int)), 9, (0, 255, 255), -1) # Yellow for matched
+            else:
+                 cv.circle(vis_image, tuple(pos.astype(int)), 6, (0, 0, 255), -1) # Red for unmatched
+
+    # --- Show the final image ---
+    plt.figure(figsize=(12, 12))
+    plt.imshow(cv.cvtColor(vis_image, cv.COLOR_BGR2RGB))
+    plt.title(f"Validation Overlay for '{match_result['name'].upper()}' (Score: {match_result.get('final_score', 0.0):.2f})")
+    plt.axis('off')
+    plt.show()
+
+
+
+# Add this function to helpers.py
+import numpy as np
+from scipy.spatial import cKDTree
+
+def validate_and_score_match(detected_coords, match_result, distance_tolerance=25.0):
+    """
+    Performs a full geometric validation of a candidate match from the angle-based search.
+    It checks how well the entire pattern fits the detected stars.
+    """
+    # --- 1. Get Initial Match Data and Perform Early Exit ---
+    initial_angle_score = match_result['normalized_score']
+    pattern = match_result['pattern']
+    
+    if initial_angle_score < 0.5 or match_result['anchor_idx'] == -1:
+        match_result['final_score'] = 0.0
+        return match_result
+
+    scene_coords_array = np.array(detected_coords)
+    scene_kdtree = cKDTree(scene_coords_array)
+
+    # --- 2. Estimate the Full Transformation ... (No changes in this section)
+    rotation = match_result['rotation_rad']
+    scene_anchor_pos = scene_coords_array[match_result['anchor_idx']]
+    pattern_anchor_node = match_result['pattern_anchor_node']
+    pattern_anchor_pos = np.array(pattern_anchor_node.position)
+    scale = 1.0
+    if len(pattern_anchor_node.links) > 0:
+        # ... (rest of scale estimation is unchanged)
+        neighbor_label, link_data = next(iter(pattern_anchor_node.links.items()))
+        pattern_dist_to_neighbor = link_data[2]
+        expected_angle = _normalize_angle(link_data[3] + rotation)
+        best_neighbor_idx, min_angle_diff = -1, float('inf')
+        for i, coord in enumerate(detected_coords):
+            if i == match_result['anchor_idx']: continue
+            vec = coord - scene_anchor_pos
+            angle_diff = abs(_normalize_angle(math.atan2(vec[1], vec[0]) - expected_angle))
+            if angle_diff < min_angle_diff:
+                min_angle_diff, best_neighbor_idx = angle_diff, i
+        if best_neighbor_idx != -1 and pattern_dist_to_neighbor > 1e-6:
+            scene_dist_to_neighbor = np.linalg.norm(scene_coords_array[best_neighbor_idx] - scene_anchor_pos)
+            scale = scene_dist_to_neighbor / pattern_dist_to_neighbor
+
+    # --- 3. Apply Transformation
+    c, s = math.cos(rotation), math.sin(rotation)
+    R = scale * np.array([[c, -s], [s, c]])
+    t = scene_anchor_pos - (R @ pattern_anchor_pos)
+    all_pattern_nodes_pos = np.array([node.position for node in pattern.nodes.values()])
+    projected_nodes = (R @ all_pattern_nodes_pos.T).T + t
+    match_result['transform'] = {'R': R, 't': t}
+
+    # --- 4. MODIFIED: Calculate Structural Fit Score with Harsher Penalty ---
+    distances, _ = scene_kdtree.query(projected_nodes)
+    num_matched_nodes = np.sum(distances < distance_tolerance)
+    
+    # Calculate the ratio of matched nodes
+    match_ratio = num_matched_nodes / len(pattern.nodes)
+    
+    # Apply a non-linear penalty. Squaring the ratio punishes misses more heavily.
+    # You can increase the exponent (e.g., to 3) for an even harsher penalty.
+    structural_fit_score = match_ratio ** 2
+    
+    # --- 5. Calculate Final Score ---
+    final_score = (0.4 * initial_angle_score) + (0.6 * structural_fit_score)
+    match_result['final_score'] = final_score
+
+    # --- 6. OPTIONAL: Refine Transform ... (No changes in this section)
+    distances, scene_indices = scene_kdtree.query(projected_nodes)
+    pattern_inliers = all_pattern_nodes_pos[distances < distance_tolerance]
+    scene_inliers = scene_coords_array[scene_indices[distances < distance_tolerance]]
+    if len(pattern_inliers) >= 3:
+        refined_M, _ = cv.estimateAffinePartial2D(pattern_inliers, scene_inliers)
+        if refined_M is not None:
+            match_result['transform']['R'] = refined_M[:, :2]
+            match_result['transform']['t'] = refined_M[:, 2]
+    
+    return match_result
+
+
+
+
+def calculate_mask_fit_score(gray_sky_image, node_mask, line_mask, match_result):
+    """
+    Calculates a score based on how well the sky image pixels fit the pattern's masks,
+    given a geometric transformation.
+    """
+    if 'transform' not in match_result:
+        return 0.0
+
+    # --- 1. Get the Inverse Transform ... (same as before) ...
+    transform = match_result['transform']
+    M = np.vstack([transform['R'], transform['t']]).T
+    
+    try:
+        inv_M = cv.invertAffineTransform(M)
+    except cv.error:
+        return 0.0
+
+    # --- 2. Warp the Sky Image ... (same as before) ...
+    pattern_size = (node_mask.shape[1], node_mask.shape[0])
+    warped_sky = cv.warpAffine(gray_sky_image, inv_M, pattern_size, borderMode=cv.BORDER_CONSTANT, borderValue=0)
+
+    # --- 3. Dilate Masks for Robustness ---
+    # NEW: Create a small kernel and dilate the masks. This allows for slight
+    # inaccuracies in the transformation.
+    kernel = np.ones((5, 5), np.uint8) # 5x5 is a good starting point
+    dilated_node_mask = cv.dilate(node_mask, kernel, iterations=1)
+    dilated_line_mask = cv.dilate(line_mask, kernel, iterations=1)
+
+    # --- 4. Calculate Scores Based on Dilated Masks ---
+    node_mask_norm = dilated_node_mask / 255.0
+    line_mask_norm = dilated_line_mask / 255.0
+    
+    num_node_pixels = np.sum(node_mask_norm)
+    num_line_pixels = np.sum(line_mask_norm)
+
+    if num_node_pixels < 1e-6:
+        return 0.0
+
+    node_score = np.sum(warped_sky * node_mask_norm) / num_node_pixels
+    
+    line_score = 0.0
+    if num_line_pixels > 1e-6:
+        # Subtract the node mask from the line mask to prevent stars that
+        # are on a line from being penalized. We only want to measure the
+        # brightness of the "empty" parts of the line.
+        line_only_mask = np.clip(line_mask_norm - node_mask_norm, 0, 1)
+        num_line_only_pixels = np.sum(line_only_mask)
+        if num_line_only_pixels > 1e-6:
+            line_score = np.sum(warped_sky * line_only_mask) / num_line_only_pixels
+
+    mask_fit_score = (node_score - line_score) / 255.0
+    
+    # For debugging, you can add this block:
+    # if match_result['name'] == 'mensa': # or some other constellation you are testing
+    #     plt.figure(figsize=(10,5))
+    #     plt.subplot(1,2,1); plt.imshow(warped_sky, cmap='gray'); plt.title("Warped Sky")
+    #     plt.imshow(dilated_node_mask, cmap='Reds', alpha=0.5)
+    #     plt.imshow(dilated_line_mask, cmap='Greens', alpha=0.5)
+    #     plt.subplot(1,2,2); plt.imshow(gray_sky_image, cmap='gray'); plt.title("Original Sky")
+    #     plt.show()
+
+    return max(0, mask_fit_score)
+
+def plot_match_in_scene(sky_image, all_coords, best_match):
+    """
+    Generates a plot showing all detected scene coordinates with the best-matched
+    constellation pattern overlaid.
+
+    Args:
+        sky_image (np.array): The original sky image (can be BGR or grayscale).
+        all_coords (list): The list of all (x,y) star coordinates detected in the scene.
+        best_match (dict): The final result dictionary for the winning constellation.
+    """
+    # 1. Prepare a color image for plotting
+    vis_image = cv.cvtColor(sky_image, cv.COLOR_GRAY2BGR) if len(sky_image.shape) == 2 else sky_image.copy()
+
+    # 2. Plot all original coordinates from the scene
+    # These are drawn as small, light blue circles for context.
+    for x, y in all_coords:
+        cv.circle(vis_image, (int(x), int(y)), 11, (0, 255, 0), 2)
+
+    # 3. Check if a valid match and transform exist to be plotted
+    # The 'transform' is calculated in the `validate_and_score_match` function.
+    if best_match.get('final_score', 0.0) < 0.1 or 'transform' not in best_match:
+        print("Match score is too low or transform is missing. Cannot plot overlay.")
+        
+        # If a basic anchor was found, we can at least highlight it
+        if best_match.get('anchor_idx', -1) != -1:
+            anchor_pos = all_coords[best_match['anchor_idx']]
+            cv.circle(vis_image, (int(anchor_pos[0]), int(anchor_pos[1])), 12, (0, 0, 255), 2,
+                      lineType=cv.LINE_AA)
+            cv.putText(vis_image, "Anchor Found (Low Score)", (int(anchor_pos[0]) + 15, int(anchor_pos[1]) + 5),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+    else:
+        # 4. A good match was found, so we plot the full pattern
+        transform = best_match['transform']
+        R, t = transform['R'], transform['t']
+        pattern = best_match['pattern']
+        
+        # Project all of the pattern's nodes into the scene using the transform
+        all_pattern_nodes_pos = np.array([node.position for node in pattern.nodes.values()])
+        projected_nodes = (R @ all_pattern_nodes_pos.T).T + t
+        
+        # Create a map from a node's label (e.g., "N1") to its index for drawing edges
+        label_to_idx = {label: i for i, label in enumerate(pattern.nodes.keys())}
+
+        # 5. Draw the pattern's edges (lines)
+        for start_label, end_label in pattern.edges:
+            p1 = tuple(projected_nodes[label_to_idx[start_label]].astype(int))
+            p2 = tuple(projected_nodes[label_to_idx[end_label]].astype(int))
+            cv.line(vis_image, p1, p2, (0, 255, 0), 2, lineType=cv.LINE_AA) # Green lines
+        
+        # 6. Draw the pattern's nodes, color-coded by match quality
+        scene_kdtree = cKDTree(np.array(all_coords))
+        distances, _ = scene_kdtree.query(projected_nodes)
+        
+        for i, pos in enumerate(projected_nodes):
+            # If a projected node is very close to a real detected star, it's a confirmed match
+            if distances[i] < 25.0: # Use the same tolerance as in validation
+                 # Draw matched nodes as bright yellow circles
+                 cv.circle(vis_image, tuple(pos.astype(int)), 9, (0, 255, 255), -1, lineType=cv.LINE_AA)
+            else:
+                 # Draw unmatched nodes as smaller, translucent red circles
+                 cv.circle(vis_image, tuple(pos.astype(int)), 6, (0, 0, 255), -1, lineType=cv.LINE_AA)
+
+    # 7. Display the final plot using Matplotlib
+    plt.figure(figsize=(14, 14))
+    plt.imshow(cv.cvtColor(vis_image, cv.COLOR_BGR2RGB))
+    title = (f"Match Result: '{best_match['name'].upper()}'\n"
+             f"Overall Score: {best_match.get('overall_score', 0.0):.3f}")
+    plt.title(title, fontsize=16)
+    plt.axis('off')
+    plt.show()

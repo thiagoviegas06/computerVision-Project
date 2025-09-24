@@ -11,6 +11,7 @@ Vec2 = Tuple[float, float]
 class Node:
     label: str
     position: Vec2
+    size: float = 0.0  
     # neighbor -> (unit_dx, unit_dy, length, angle)
     links: Dict[str, Tuple[float, float, float, float]] = field(default_factory=dict)
 
@@ -29,8 +30,8 @@ class Pattern:
     nodes: Dict[str, Node] = field(default_factory=dict)
     edges: List[Tuple[str, str]] = field(default_factory=list)  # undirected (a,b)
 
-    def add_node(self, label: str, pos: Vec2):
-        self.nodes[label] = Node(label, pos)
+    def add_node(self, label: str, pos: Vec2, size: float = 0.0): # <-- UPDATE THIS METHOD
+        self.nodes[label] = Node(label, pos, size=size)
 
     def add_edge(self, a: str, b: str):
         if a == b or (a, b) in self.edges or (b, a) in self.edges: return
@@ -47,6 +48,28 @@ class Pattern:
                 best = node
                 best_deg = deg
         return best
+    
+    def get_highest_degree_nodes(self) -> List[Node]:
+        """
+        Finds all nodes with the maximum number of links (degree).
+        Returns a list of nodes.
+        """
+        if not self.nodes:
+            return []
+
+        best_deg = -1
+        # First pass: find the maximum degree in the pattern
+        for node in self.nodes.values():
+            best_deg = max(best_deg, len(node.links))
+        
+        if best_deg == -1:
+            return []
+
+        # Second pass: collect all nodes that have this maximum degree
+        highest_degree_nodes = [
+            node for node in self.nodes.values() if len(node.links) == best_deg
+        ]
+        return highest_degree_nodes
 
 def extract_pattern_from_image(bgr_or_rgba, name="pattern",
                                min_node_area=5, max_node_area=5_000,
@@ -60,9 +83,11 @@ def extract_pattern_from_image(bgr_or_rgba, name="pattern",
     if img.shape[2] == 4:
         bgr = img[:, :, :3]
         alpha = img[:, :, 3]
-    else:
+    elif img.shape[2] == 3:
         bgr = img
         alpha = None
+    else:
+        raise ValueError("Input image must have 3 (BGR) or 4 (BGRA) channels")
 
     # HSV segmentation
     hsv = cv.cvtColor(bgr, cv.COLOR_BGR2HSV)
@@ -76,17 +101,19 @@ def extract_pattern_from_image(bgr_or_rgba, name="pattern",
 
     # Nodes from connected components
     num, labels, stats, cents = cv.connectedComponentsWithStats(white, connectivity=8)
-    centers = []
+    node_data = []
     for i in range(1, num):
         area = stats[i, cv.CC_STAT_AREA]
         if min_node_area <= area <= max_node_area:
             cx, cy = cents[i]  # float (x,y)
-            centers.append((float(cx), float(cy)))
+            node_data.append({'pos': (float(cx), float(cy)), 'area': float(area)})
+
+    node_data.sort(key=lambda d: (d['pos'][1], d['pos'][0]))
 
     # Build pattern with nodes
     pat = Pattern(name=name)
-    for k, (x, y) in enumerate(centers, start=1):
-        pat.add_node(f"N{k}", (x, y))
+    for k, data in enumerate(node_data, start=1):
+        pat.add_node(f"N{k}", data['pos'], size=data['area'])
 
     # Helper: sample along a segment to check if it's painted green
     def link_exists(p1, p2):
