@@ -335,6 +335,27 @@ This module orchestrates the high-level logic of the constellation identificatio
 \end{itemize}
 
 
+\section{AI Prompts and Thought Process}
+
+\subsection{Initial Approach}
+We began by identifying star patches in the sky image using the same detection algorithm described in Questions 2, 3, and 4. Once the patches were located, we used AI-assisted filtering to prepare the image for constellation pattern matching.
+
+\subsection{Filtering}
+Our first idea was to draw circles and connecting lines between the detected patches, then attempt to overlay constellation patterns directly. With AI’s help, we developed functions to convert images into binary black-and-white masks, highlighting the star patches while suppressing the background and constellation lines. We applied the same preprocessing to both the sky images and the constellation templates.
+
+\subsection{Pattern Matching}
+After generating binary masks for both images, we attempted to use OpenCV’s built-in \texttt{matchTemplate} function. The initial results were poor, achieving only about 30\% accuracy. With further parameter tuning, we improved the score to roughly 58\%, but this was still insufficient for reliable constellation recognition.
+
+\subsection{Using Image Invariants}
+Given the limitations of template matching, we shifted focus toward geometric invariants. With support from GitHub Copilot, we reorganized our code into an object-oriented design, allowing each image and constellation template to be represented as objects with helper methods. We then computed the angles formed between all pairs of connected star patches, since these angular relationships are invariant to translation and scaling.
+
+\subsection{Angle-Based Matching}
+Once angle extraction was implemented, we developed an algorithm to compare angular patterns between the sky image and constellation templates. Using only a subset of angles led to poor results, but extending the comparison to all constellation angles significantly improved accuracy. Still, this approach sometimes failed to identify the correct constellation consistently.
+
+\subsection{Combining Algorithms}
+To improve robustness, we combined our original template-matching method with the angle-based matching approach. This hybrid strategy leveraged the strengths of both techniques: template matching provided a coarse alignment, while angle comparison refined the match by enforcing geometric consistency.
+
+
 %\printbibliography
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
