@@ -1,0 +1,344 @@
+\documentclass[a4paper,11pt]{article}
+%\documentclass[a4paper,11pt,twocolumn]{article}%twocolumn layout; not sure if this works correctly. Feel free to experiment.
+\usepackage[pdftex]{color,graphicx}
+\usepackage[T1]{fontenc}
+\usepackage{pxfonts}
+\usepackage{subfigure}
+\usepackage{xcolor}
+\usepackage[makeroom]{cancel}
+
+%color links to figs, etc.
+%\usepackage[pdftex,colorlinks,urlcolor=blue,breaklinks]{hyperref}
+\usepackage[pdftex,colorlinks]{hyperref}
+\hypersetup{colorlinks,%
+		    citecolor=black,%
+		    filecolor=black,%
+		    linkcolor=black,%
+		    urlcolor=black,%
+		    breaklinks=true,%
+		    pdftex}
+		    
+%easily manipulate margins
+\usepackage{geometry}
+\makeatletter
+\if@twocolumn%
+	\geometry{twoside,
+		paperwidth=210mm,
+  		paperheight=297mm,
+  		textheight=682pt,
+  		textwidth=516pt,
+  		centering,
+  		headheight=50pt,
+  		headsep=12pt,
+  		footskip=18pt,
+  		footnotesep=24pt plus 2pt minus 12pt,
+ 		columnsep=14pt}	
+\else%if using twocolumns, I still need to modify the textwidth to accomodate the watermark
+	\geometry{twoside,
+		  paperwidth=210mm,
+		  paperheight=297mm,
+		  textheight=750pt,
+		  textwidth=500pt,
+		  centering,
+		  headheight=50pt,
+		  headsep=12pt,
+		  footskip=18pt,
+		  footnotesep=24pt plus 2pt minus 12pt}
+\fi%
+
+%change the font
+\usepackage{charter}
+
+%CC logos to add in the footer
+% \usepackage{ccicons}
+
+%easily manipulate color
+\usepackage{color}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{amsmath}
+\usepackage{algorithmicx}
+\usepackage{algorithm, algpseudocode}
+\usepackage{graphicx}
+\usepackage{adjustbox}
+\usepackage{mathrsfs}
+
+%nicely print bioRxiv
+\newcommand{\biorxiv}{\emph{bio{\color{red}R}$\chi$iv}}
+
+%add biorxiv type of article using the package background
+\usepackage{tikz}
+\usepackage[firstpage=True]{background}
+
+
+\newcommand{\newresults}{
+\makeatletter
+\if@twocolumn%
+	\backgroundsetup{
+		position={0.572\paperwidth,-0.025\paperheight} ,
+		angle=270,
+		color=black,
+		opacity=0.60,
+		scale=1.5,
+		contents={\tikz\node[text=black,fill=gray!40,align=left, minimum width=2.3cm,minimum height=0.6cm,inner sep=0]{New Results};}}
+\else
+	\backgroundsetup{
+		position={0.338\paperwidth,-0.06\paperheight} ,
+		angle=270,
+		color=black,
+		opacity=0.60,
+		scale=2.5,
+		contents={\tikz\node[text=black,fill=gray!40,align=left, minimum width=2.3cm,minimum height=0.6cm,inner sep=0]{New Results};}}
+\fi%
+}
+
+\newcommand{\confirmatoryresults}{
+\makeatletter
+\if@twocolumn%
+\backgroundsetup{
+	position={0.572\paperwidth,-0.03\paperheight} ,
+	angle=270,
+	color=black,
+	opacity=0.60,
+	scale=1.5,
+	contents={\tikz\node[text=black,fill=gray!40,align=left, minimum width=3.9cm,minimum height=0.6cm,inner sep=0]{Confirmatory Results};}}
+\else
+	\backgroundsetup{
+	position={0.338\paperwidth,-0.07\paperheight} ,
+	angle=270,
+	color=black,
+	opacity=0.60,
+	scale=2.5,
+	contents={\tikz\node[text=black,fill=gray!40,align=left, minimum width=3.9cm,minimum height=0.6cm,inner sep=0]{Confirmatory Results};}}
+\fi%
+}
+
+\newcommand{\contradictoryresults}{
+\makeatletter
+\if@twocolumn%
+	\backgroundsetup{
+	position={0.572\paperwidth,-0.03\paperheight} ,
+	angle=270,
+	color=black,
+	opacity=0.0,
+	scale=1.5,
+	contents={\tikz\node[text=black,fill=gray!40,align=left, minimum width=4.0cm,minimum height=0.6cm,inner sep=0]{};}}
+\else
+	\backgroundsetup{
+	position={0.338\paperwidth,-0.07\paperheight} ,
+	angle=270,
+	color=black,
+	opacity=0.0,
+	scale=2.5,
+	contents={\tikz\node[text=black,fill=gray!40,align=left, minimum width=4.0cm,minimum height=0.6cm,inner sep=0]{};}}
+\fi%
+}
+
+%enhanced floats
+\usepackage{float}
+
+%rotate floats if necessary
+\usepackage{rotating}
+
+%nicer, clever tables, uncomment if necessary
+\usepackage{supertabular}
+
+%tables with notes, etc., uncomment if necessary
+%\usepackage{threeparttable}
+
+%improved captions, uncomment if necessary
+\usepackage{caption}
+
+%add an author block
+\usepackage{authblk}
+%redefine authorblock font size and affiliation font size
+\renewcommand\Authfont{\small}
+\renewcommand\Affilfont{\scriptsize}
+
+%add nice headers
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\renewcommand{\headrulewidth}{0pt}
+\lhead{{\footnotesize }}
+\chead{}
+\rhead{{\footnotesize }}
+\lfoot{}
+\cfoot{\thepage}
+% \rfoot{\biorxiv}
+
+
+\usepackage{draftwatermark}
+\makeatletter
+\if@twocolumn
+	\SetWatermarkText{}
+	\SetWatermarkScale{0.20}
+	\SetWatermarkAngle{270}
+	%note: I defined this commands in the draftwatermark.sty file. For some reason they are in teh manual but not in the sty file...
+	\SetWatermarkHorCenter{0.97\paperwidth}
+	\SetWatermarkVerCenter{-.88\paperheight}
+\else
+	\SetWatermarkText{}
+	\SetWatermarkScale{0.25}
+	\SetWatermarkAngle{270}
+	%note: I defined this commands in the draftwatermark.sty file. For some reason they are in teh manual but not in the sty file...
+	\SetWatermarkHorCenter{0.95\paperwidth}
+	\SetWatermarkVerCenter{-.82\paperheight}
+\fi
+
+%uncomment the type of bioRxiv preprint below to added to the first page
+%\newresults{}
+%\confirmatoryresults{}
+\contradictoryresults{}
+
+%flushleft the title, authorblock and Abstract
+%modified from http://tex.stackexchange.com/questions/85343/left-align-abstract-title-and-authors
+\makeatletter
+\renewcommand{\maketitle}{\bgroup\setlength{\parindent}{0pt}
+\begin{flushleft}
+  \thispagestyle{plain}
+  \textbf{\@title}
+
+  \@author
+\end{flushleft}\egroup
+}
+\makeatother
+
+%redefine the abstract
+\renewenvironment{abstract}
+ {\small
+  \begin{flushleft}
+  \textbf{\abstractname}\vspace{-0.40em}\vspace{0pt}
+  \end{flushleft}
+  \list{}{
+    \setlength{\leftmargin}{0cm}%
+    \setlength{\rightmargin}{\leftmargin}%
+  }%
+  \item\relax}
+ {\endlist}
+
+\hyphenation{}
+
+\renewcommand*{\thefootnote}{\fnsymbol{footnote}}
+
+%if to do notes need to be added: need to configure this!
+\usepackage[colorinlistoftodos]{todonotes}
+
+%feel free to change the reference style to suit your needs
+\usepackage[firstinits=true, backref=false, maxcitenames=1,  hyperref=auto, style=authoryear, defernumbers=true, backend=bibtex]{biblatex}[2010/11-19]
+
+%change the name of this file to point to your bib file.
+\bibliography{./Bibliography/Literature}
+
+\newcommand{\yz}[1]{{\color{blue}[Yizi: #1]}}
+
+\definecolor{dodgerblue}{rgb}{0.12, 0.56, 1.0}
+\definecolor{lightseagreen}{rgb}{0.13, 0.7, 0.67}
+\definecolor{mediumorchid}{rgb}{0.73, 0.33, 0.83}
+\definecolor{electriclavender}{rgb}{0.96, 0.73, 1.0}
+\definecolor{royalazure}{rgb}{0.0, 0.22, 0.66}
+\definecolor{cadetgrey}{rgb}{0.57, 0.64, 0.69}
+\definecolor{applegreen}{rgb}{0.55, 0.71, 0.0}
+\definecolor{darkpastelpurple}{rgb}{0.59, 0.44, 0.84}
+\definecolor{purpleheart}{rgb}{0.41, 0.21, 0.61}
+
+
+
+\begin{document}
+
+%always keep the \newline command at the end of the title to add space between the title and the authors
+\title{\Large Computer Vision CS-GY 6643 - Project 1 Q5
+\newline}
+\author{Diego Rosenberg \href{mailto:dr3432@nyu.edu}{dr3432@nyu.edu}, Thiago Viegas \href{mailto:tjv235@nyu.edu}{tjv235@nyu.edu}}
+
+
+
+\date{}
+
+\maketitle
+%\tableofcontents
+\section{Question 5}
+\subsection{General Approach}
+This algorithm identifies constellations in a sky image through a multi-stage geometric pattern matching process. First, it loads and analyzes reference images to build a structural map of each known constellation, representing stars as nodes in a graph. For any given sky image, it detects all potential stars by using image thresholding and contour analysis to isolate bright spots. The core of the algorithm then compares the detected stars to the reference patterns by creating a rotation-invariant "angle signature" for each star based on its neighbors, allowing it to find candidate matches and their likely orientation. Finally, these candidates are validated by projecting the entire constellation pattern onto the sky and calculating a final score based on how well the pattern's stars align with actual detected stars, while also penalizing for extra, unexplained stars in the vicinity to ensure a precise match.
+
+\subsection{Classes and Data Structures}
+\subsubsection*{patternsHelper.py}
+\hrulefill
+
+This module defines the data structures for representing constellation patterns and includes the logic to extract these patterns from images.
+
+\textbf{Data Classes}
+\begin{itemize}
+	\item \textbf{\texttt{Node}}: This data class represents a single star in a constellation. It stores the star's label, its \texttt{(x, y)} position, its size, and a dictionary of links to its neighbors, including the angle and distance to each.
+	\item \textbf{\texttt{Pattern}}: This data class represents an entire constellation. It contains a dictionary of all its \texttt{Node} objects and a list of edges that connect them, effectively defining the constellation's geometric structure.
+\end{itemize}
+
+\textbf{Functions}
+\begin{itemize}
+	\item \textbf{\texttt{extract\_pattern\_from\_image(bgr\_or\_rgba, ...)}}: This function analyzes a pattern image (which has white dots for stars and green lines for connections). It uses color segmentation to identify the nodes and edges and constructs a \texttt{Pattern} object from them. It also returns the binary masks for the nodes (stars) and lines for later use in matching.
+\end{itemize}
+
+\subsubsection*{imageHelper.py}
+\hrulefill
+
+This file contains the \texttt{Image} class, which acts as a primary controller for loading and processing a single sky image.
+
+\textbf{Class}
+\begin{itemize}
+	\item \textbf{\texttt{Image}}: This class encapsulates a sky image and all its associated data and operations. It handles loading the image, performing preprocessing, detecting stars, storing their coordinates, and holding the final constellation prediction and confidence score.
+\end{itemize}
+
+\textbf{Methods (Functions within the \texttt{Image} class)}
+\begin{itemize}
+	\item \textbf{\texttt{\_\_init\_\_(self, image\_path, ...)}}: The constructor loads an image from a specified file path. It immediately converts the image to grayscale and initializes placeholder variables for storing results.
+	\item \textbf{\texttt{equalize(self)}}: Applies histogram equalization to the image to improve its contrast. This can help make faint stars more visible before further processing.
+	\item \textbf{\texttt{adaptive\_threshold(self, ...)}} and \textbf{\texttt{global\_threshold(self, ...)}}: These methods convert the grayscale image into a binary (black and white) image. They are used to isolate the bright stars from the dark sky background.
+	\item \textbf{\texttt{iterate\_through\_patches(self)}}: This method loops through a directory of smaller "patch" images and uses template matching to find their locations in the main sky image. It is one of the ways the program identifies the key stars of a potential constellation.
+	\item \textbf{\texttt{detect\_stars\_from\_sky(self, ...)}}: This is a more direct method for finding stars that does not rely on patches. It uses contour detection on the thresholded image to identify all bright objects that fall within a specific size range, calculating their centroids to get precise coordinates.
+	\item \textbf{\texttt{create\_black\_image\_with\_coordinates(self)}}: This utility function generates a new, black image and draws lines between all the detected star coordinates. This creates a visual representation of the detected star pattern.
+\end{itemize}
+
+\subsection{Helper Functions}
+\subsubsection*{helpers.py}
+\hrulefill
+
+This module is a collection of utility functions that perform the core calculations for image processing, geometric analysis, and pattern matching.
+
+\textbf{Functions}
+
+\begin{itemize}
+	\item \textbf{\texttt{template\_matching(image, template)}}: A standard computer vision function that finds the location of a small template image within a larger source image. It returns the quality of the match (score) and the coordinates of the best match.
+	\item \textbf{\texttt{calculate\_all\_angle\_signatures(coordinates, ...)}}: A key function for the matching algorithm. For each star, it calculates a "signature" consisting of the sorted angles to its nearest neighbors, creating a description of its local geometry that is robust to rotation and scale.
+	\item \textbf{\texttt{find\_candidate\_rotations(pattern\_sig, detected\_sig, ...)}}: This function compares the angle signature of a pattern star to that of a detected star from the sky. It identifies the most likely rotation that would align the two signatures, proposing a hypothesis for how the pattern might be oriented.
+	\item \textbf{\texttt{validate\_and\_score\_match(detected\_coords, match\_result, ...)}}: After a potential match is found based on angle signatures, this function performs a full geometric validation. It projects the entire constellation pattern onto the sky using the hypothesized transformation and calculates a \texttt{final\_score} based on how many pattern stars correctly align with detected sky stars.
+	\item \textbf{\texttt{calculate\_mask\_fit\_score(...)}} and \textbf{\texttt{calculate\_sparsity\_score(...)}}: These functions provide additional scoring metrics to refine the best match. The \texttt{mask\_fit\_score} checks how well the bright pixels of the sky align with the pattern's shape, while the \texttt{sparsity\_score} penalizes matches that occur in cluttered areas with many extra, unexplained stars.
+	\item \textbf{\texttt{plot\_match\_in\_scene(sky\_image, ...)}}: A visualization function that overlays the best-matched constellation pattern onto the original sky image. It color-codes the nodes and edges to make it easy to see the quality and accuracy of the final match.
+\end{itemize}
+
+\subsubsection*{master.py}
+\hrulefill
+
+This module orchestrates the high-level logic of the constellation identification process, bringing together the functionality from all the helper modules.
+
+\subsection*{Functions}
+\begin{itemize}
+	\item \textbf{\texttt{get\_info\_on\_patterns(pattern\_dir)}}: This function is responsible for loading all the reference constellation patterns. It iterates through the pattern files, calls \texttt{extract\_pattern\_from\_image} for each one, and returns a list of structured \texttt{Pattern} objects.
+	\item \textbf{\texttt{find\_constelation(sky\_file, patch\_dir, patterns)}}: This is the core engine of the program. For a single sky image, it detects the stars, then systematically compares them against every known constellation pattern to find the best possible match using the geometric validation and scoring functions from \texttt{helpers.py}.
+	\item \textbf{\texttt{master\_function(folder, patterns)}}: This function serves as a convenient wrapper that handles the file management for a single constellation folder. It identifies the main sky image and the patch subfolder, calls \texttt{find\_constelation} to perform the analysis, and returns the results.
+\end{itemize}
+
+
+%\printbibliography
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+\end{document}

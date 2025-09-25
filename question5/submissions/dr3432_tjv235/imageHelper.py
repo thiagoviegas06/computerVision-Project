@@ -4,14 +4,14 @@ import matplotlib.pyplot as plt
 import helpers as h
 import os
 import glob
-from patternsHelper import Node, Pattern, extract_pattern_from_image
-import math
-import helpers as h
+import config
+
 
 class Image:
     def __init__(self, image_path, path_to_patches=None):
         self.image = cv.imread(image_path)
-        print(f"Loaded image from {image_path} with shape {self.image.shape if self.image is not None else 'None'}")
+        if config.verbose:
+            print(f"Loaded image from {image_path} with shape {self.image.shape if self.image is not None else 'None'}")
         self.path_to_patches = path_to_patches
         self.coordinates_list = []
         self.global_thresh_image = None
@@ -43,14 +43,16 @@ class Image:
         num = 1
         for patch_file in sorted(glob.glob(self.path_to_patches)):
             filename = os.path.basename(patch_file)
-            print(f"Processing patch: {filename}")
+            if config.verbose:
+                print(f"Processing patch: {filename}")
             keyValue = f"patch {num}"
 
             # Load patch image
             patch = cv.imread(patch_file)
 
             if patch is None:
-                print(f"Patch at path {patch_file} could not be loaded.")
+                if config.verbose:
+                    print(f"Patch at path {patch_file} could not be loaded.")
                 continue
 
             # Convert patch to grayscale
@@ -61,18 +63,21 @@ class Image:
 
             # Template matching
             score, coordinates = h.template_matching(self.global_thresh_image, patch_thresh)
-            print(f"Matching score for {filename}: {score}")
-            print(f"Coordinates (x, y, width, height) for {filename}: {coordinates}")
+            if config.verbose:
+                print(f"Matching score for {filename}: {score}")
+                print(f"Coordinates (x, y, width, height) for {filename}: {coordinates}")
 
             if score > 0.95:
                 self.coordinates_list.append(coordinates[0])
 
                 self.patches[keyValue] = coordinates[0]
-                print(f"{keyValue} matched at {coordinates[0]}")
+                if config.verbose:
+                    print(f"{keyValue} matched at {coordinates[0]}")
 
             else:
                 self.patches[keyValue] = - 1
-                print(f"{keyValue} matched at -1 (no match)")
+                if config.verbose:
+                    print(f"{keyValue} matched at -1 (no match)")
             num += 1
     
     def get_coordinates(self):

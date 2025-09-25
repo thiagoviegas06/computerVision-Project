@@ -12,65 +12,84 @@ REQUIREMENTS:
 import pandas as pd
 import argparse
 import sys
+import os
 from pathlib import Path
-import master 
+import master
+import config
+import helpers as h
 
-def process_constellation_data(root_folder, target_folder, verbose=False):
+PATTERN_FOLDER_NAME = "patterns"
+PATTERN_FILE_SUFFIX = "*.png"  # Pattern files in patterns/ folder
+TEAM_FOLDER_NAME = "dr3432_tjv235"  
+
+def process_constellation_data(root_folder, target_folder):
     """
     Main processing function - implement your constellation classification here
     
     Args:
         root_folder: Path to root data directory (contains patterns/, test/, etc.)
         target_folder: Folder to process ('test', 'validation', etc.)
-        verbose: Whether to print detailed output
+        config.verbose: Whether to print detailed output
     
     Returns:
         pandas.DataFrame: Results in required CSV format
     """
     
-    root_path = Path(root_folder)
-    target_path = root_path / target_folder
-    patterns_path = root_path / "patterns"
+    root_path = root_folder
+    if not os.path.exists(root_folder):
+        raise ValueError(f"Root folder '{root_folder}' does not exist.")
+    root_folder = Path(root_folder)
     
-    if verbose:
+    target_dir = os.path.join(root_path, target_folder)
+    if not os.path.exists(target_dir):
+        raise ValueError(f"Target folder '{target_dir}' does not exist.")
+    target_folder = root_folder / target_dir
+
+    patterns_path = os.path.join(root_path, PATTERN_FOLDER_NAME)
+    if not os.path.exists(patterns_path):
+        raise ValueError(f"Patterns folder '{patterns_path}' does not exist.")
+    
+    patterns_folder = root_folder / PATTERN_FOLDER_NAME
+
+    if config.verbose:
         print(f"Root folder: {root_path}")
-        print(f"Target folder: {target_path}")
+        print(f"Target folder: {target_dir}")
         print(f"Patterns folder: {patterns_path}")
     
+    if config.verbose:
+        print("Loading patterns...")
+    patterns = master.get_info_on_patterns(os.path.join(patterns_path, PATTERN_FILE_SUFFIX))
+    
     # Find constellation folders
-    constellation_folders = [f for f in target_path.iterdir() 
+    constellation_folders = [f for f in target_folder.iterdir() 
                            if f.is_dir() and not f.name.startswith('.')]
-    constellation_folders = sorted(constellation_folders, key=lambda x: x.name)
     
-    if verbose:
+    constellation_folders = h.sort_by_number_first(constellation_folders)
+    
+    if config.verbose:
         print(f"Found {len(constellation_folders)} constellation folders")
-    
-    # TODO: IMPLEMENT YOUR ALGORITHM HERE
-    master.get_info_on_patterns(str(patterns_path / "*.png"))
+
     all_results = []
     max_patches = 0  # Will be determined dynamically by scanning folders
     
     for i, constellation_folder in enumerate(constellation_folders, 1):
         folder_name = constellation_folder.name
-
+        print(f"Processing folder {i}: {folder_name}")
         try:
-            patch_results, constellation_prediction, confidence_score = master.master_function(str(constellation_folder))
+            patch_results, constellation_prediction, confidence_score = master.master_function(str(constellation_folder), patterns)
         
         except Exception as e:
             print(f"Error processing folder {folder_name}: {e}")
             patch_results = {}
-            constellation_prediction = "unknown"
-        # TODO: Your processing logic here
-        # Load sky image, find patches, do template matching, classify constellation
-        
-        # Example patch results - replace with your algorithm
-        
-
-    
+            constellation_prediction = "unknown"      
         
         # Track maximum patches across all folders
         max_patches = max(max_patches, len(patch_results))
-        print(max_patches)
+
+        # Print number of maximum patches
+        if config.verbose:
+            print(f"Maximum patches so far: {max_patches}")
+
         # Store results
         result_row = {
             "S.no": i,
@@ -80,8 +99,9 @@ def process_constellation_data(root_folder, target_folder, verbose=False):
             "Confidence": confidence_score
         }
         all_results.append(result_row)
-        print(result_row)
-    
+        if config.verbose:
+            print(result_row)
+
     # Format results for CSV output
     for result in all_results:
         patch_results = result.pop("patch_results")
@@ -90,19 +110,17 @@ def process_constellation_data(root_folder, target_folder, verbose=False):
         # Add patch columns (patch 1, patch 2, ..., patch N)
         for patch_idx in range(1, max_patches + 1):
             col_name = f"patch {patch_idx}"
-            
             if patch_idx <= len(sorted_patches):
-                patch_name, (x, y) = sorted_patches[patch_idx - 1]
-                if x == -1 and y == -1:
-                    result[col_name] = "-1"
+                if sorted_patches[patch_idx - 1][1] != -1:
+                    _, (x, y) = sorted_patches[patch_idx - 1]
+                    result[col_name] = f"({x}, {y})"
                 else:
-                    result[col_name] = f"({x},{y})"
+                    result[col_name] = "-1"
             else:
                 result[col_name] = "-1"
-    
+        
     # Create DataFrame with proper column order
     df = pd.DataFrame(all_results)
-    
     # Ensure correct column order
     base_cols = ["S.no", "Folder No."]
     patch_cols = [f"patch {i}" for i in range(1, max_patches + 1)]
@@ -117,23 +135,23 @@ def main():
     parser.add_argument("root_folder", help="Root folder containing data and patterns")
     parser.add_argument("-f", "--folder", required=True,
                        help="Target folder to process (e.g., 'test', 'validation')")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                       help="Enable verbose output")
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                       help="Enable config.verbose output")
     
     args = parser.parse_args()
-    
+    config.verbose = args.verbose  # Set global config.verbose flag in config module
     try:
         # Process the data
         results_df = process_constellation_data(
             args.root_folder,
-            args.folder,
-            args.verbose
+            args.folder
         )
-        
+
         # Save results in the same directory as this script
-        script_dir = Path(__file__).parent
-        output_file = script_dir / f"dr3432_tjv235_{args.folder}_results.csv"
-        results_df.to_csv(output_file, index=False)
+        script_dir = os.path.join(args.root_folder, "submissions", TEAM_FOLDER_NAME)
+        output_file = f"{args.folder}_results.csv"
+        print(f"Saving results to {os.path.join(script_dir, output_file)}...")
+        results_df.to_csv(os.path.join(script_dir, output_file), index=False)
         
         print(f"Results saved to: {output_file}")
         

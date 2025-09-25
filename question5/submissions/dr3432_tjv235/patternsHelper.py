@@ -3,6 +3,7 @@ from typing import Dict, Tuple, List
 import math
 import cv2 as cv
 import numpy as np
+import config
 
 
 Vec2 = Tuple[float, float]
