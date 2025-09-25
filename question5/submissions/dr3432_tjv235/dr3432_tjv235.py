@@ -149,7 +149,7 @@ def main():
 
         # Save results in the same directory as this script
         script_dir = os.path.join(args.root_folder, "submissions", TEAM_FOLDER_NAME)
-        output_file = f"{args.folder}_results.csv"
+        output_file = f"{TEAM_FOLDER_NAME}_{args.folder}_results.csv"
         print(f"Saving results to {os.path.join(script_dir, output_file)}...")
         results_df.to_csv(os.path.join(script_dir, output_file), index=False)
         
