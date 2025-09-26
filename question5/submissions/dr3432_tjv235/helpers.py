@@ -418,7 +418,7 @@ def validate_and_score_match(detected_coords, match_result, distance_tolerance=2
         match_result['final_score'] = 0.0
         return match_result
 
-    # Calculate Structural Fit Score with Harsher Penalty ---
+    # Calculate Structural Fit Score with Harsher Penalty
     distances, _ = scene_kdtree.query(projected_nodes)
     num_matched_nodes = np.sum(distances < distance_tolerance)
     
